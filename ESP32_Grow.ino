@@ -46,11 +46,16 @@ AsyncWebServer serial_server(5000);
 
 
 
-#define LEDPin 4
+#define MicroPin 4
+#define GrowPin 0
+#define BloomPin 2
+#define MainPin 15
 int dutyCycle;
-/* Setting PWM Properties */
 const int PWMFreq = 5000; /* 5 KHz */
-const int PWMChannel = 0;
+const int PWMChannel_micro = 0;
+const int PWMChannel_grow = 1;
+const int PWMChannel_bloom = 2;
+const int PWMChannel_main = 3;
 const int PWMResolution = 10;
 const int MAX_DUTY_CYCLE = (int)(pow(2, PWMResolution) - 1);
 
@@ -66,8 +71,8 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);  // Configure LiquidCrystal_I2C library with
 struct PinStruct {
   int pump_micro;
   int pump_grow;
-  int bloom_pump;
-  int main_pump;
+  int pump_bloom;
+  int pump_main;
 };
 
 
@@ -78,7 +83,7 @@ void setup() {
   //Serial.println("Try Connecting to ");
   //Serial.println(ssid);
 
-  
+
   Wire.begin(I2C_SDA, I2C_SCL);
   lcd.init();                        // Initialize I2C LCD module
   lcd.backlight();                   // Turn backlight ON
@@ -95,7 +100,7 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
   }
-    //Serial.print(".");}
+  //Serial.print(".");}
   //Serial.println("");
   //Serial.println("WiFi connected successfully");
   //Serial.print("Got IP: ");
@@ -122,10 +127,25 @@ void setup() {
 
   setup_ota();
 
-  ledcSetup(PWMChannel, PWMFreq, PWMResolution);
-  /* Attach the LED PWM Channel to the GPIO Pin */
-  ledcAttachPin(LEDPin, PWMChannel);
-  ledcWrite(PWMChannel, 0);
+  //MicroPin
+  ledcSetup(PWMChannel_micro, PWMFreq, PWMResolution);
+  ledcAttachPin(MicroPin, PWMChannel_micro);
+  ledcWrite(PWMChannel_micro, 0);
+
+  //GrowPin
+  ledcSetup(PWMChannel_grow, PWMFreq, PWMResolution);
+  ledcAttachPin(GrowPin, PWMChannel_grow);
+  ledcWrite(PWMChannel_grow, 0);
+
+  //BloomPin
+  ledcSetup(PWMChannel_bloom, PWMFreq, PWMResolution);
+  ledcAttachPin(BloomPin, PWMChannel_bloom);
+  ledcWrite(PWMChannel_bloom, 0);
+
+  //MainPin
+  ledcSetup(PWMChannel_main, PWMFreq, PWMResolution);
+  ledcAttachPin(MainPin, PWMChannel_main);
+  ledcWrite(PWMChannel_main, 0);
 }
 
 
@@ -139,8 +159,9 @@ unsigned long currentMillisforpump;
 unsigned long previousMillisforpump;
 const long sec_pump_interval = 5000;
 
-bool reset_pump = false; 
-
+bool reset_pump = false;
+bool set_pumps_bool = false;
+PinStruct pump_map;
 void loop()
 {
   unsigned long currentMillis = millis();
@@ -159,7 +180,7 @@ void loop()
       if (sliderValue == 0)
       {
         lcd_mode_text = "No Mode - Default";
-        
+
       }
       else if (sliderValue == 1)
       {
@@ -176,40 +197,50 @@ void loop()
       else {
         lcd_mode_text = "Error";
       }
-      PinStruct pump_map = set_pump_mode(sliderValue);
+      pump_map = set_pump_mode(sliderValue);
       webserial_string = "The Pump_Map is as follows:\nPumpe für Micro: " + String(pump_map.pump_micro);
       WebSerial.println(webserial_string);
       webserial_string = "The Pump_Map is as follows:\nPumpe für Grow: " + String(pump_map.pump_grow);
       WebSerial.println(webserial_string);
-      webserial_string = "The Pump_Map is as follows:\nPumpe für Bloom: " + String(pump_map.bloom_pump);
+      webserial_string = "The Pump_Map is as follows:\nPumpe für Bloom: " + String(pump_map.pump_bloom);
       WebSerial.println(webserial_string);
 
       lcd.print("               ");
       lcd.setCursor(0, 2);
       lcd.print(lcd_mode_text);
       temp_value = sliderValue;
-      set_pumps(pump_map, ledcWrite, PWMChannel);
-      currentMillisforpump = millis();
-      previousMillisforpump = 0;
-      reset_pump = true;
-      
-
+      set_pumps_bool = true;
     }
     //ledcWrite(PWMChannel, sliderValue * 10.24);
     //WebSerial.println(sliderValue);
     // WebSerial.println(sliderValue * 10.24);
   }
-  previousMillisforpump = millis();
-  if(previousMillisforpump - currentMillisforpump >= sec_pump_interval && reset_pump == true)
+
+  if (set_pumps_bool == true || timeClient.getFormattedTime() == "12:46:00")
   {
-    previousMillisforpump = currentMillisforpump;
-    ledcWrite(PWMChannel, 0);
+    set_pumps(pump_map, ledcWrite, PWMChannel_micro);
+    currentMillisforpump = millis();
+    previousMillisforpump = 0;
+    reset_pump = true;
+    set_pumps_bool = false;
+    WebSerial.println("Turn on Pump");
+  }
+
+  previousMillisforpump = millis();
+
+  if (previousMillisforpump - currentMillisforpump >= sec_pump_interval && reset_pump == true)
+  {
+    //previousMillisforpump = currentMillisforpump;
+    ledcWrite(PWMChannel_micro, 0);
+    ledcWrite(PWMChannel_grow, 0);
+    ledcWrite(PWMChannel_bloom, 0);
+    ledcWrite(PWMChannel_main, 0);
     reset_pump = false;
     WebSerial.println("Turn off Pump");
   }
   if (timeClient.getFormattedTime() == "00:00:00")
   {
-    
+
     ESP.restart();
   }
   main_server.handleClient();
