@@ -67,6 +67,13 @@ const int MAX_DUTY_CYCLE = (int)(pow(2, PWMResolution) - 1);
 #define I2C_SCL 22
 LiquidCrystal_I2C lcd(0x27, 20, 4);  // Configure LiquidCrystal_I2C library with 0x27 address, 16 columns and 2 rows
 
+#include <EEPROM.h>
+#include <Arduino.h>
+
+// Die maximale Größe des EEPROMs in Bytes
+#define EEPROM_SIZE 64
+
+bool reset_msg_rec = false;
 
 struct PinStruct {
   int pump_micro;
@@ -76,7 +83,7 @@ struct PinStruct {
 };
 
 
-
+bool restart_flag;
 void setup() {
 
   //Serial.begin(115200);
@@ -118,7 +125,12 @@ void setup() {
   setup_main_server();
 
   //Serial.println("HTTP main_server started");
-  delay(100);
+  //delay(100);
+      if (!EEPROM.begin(EEPROM_SIZE))
+  {
+    lcd.setCursor(0, 2);
+    lcd.print("EEPROM init failed");
+  }
 
   timeClient.begin();
   timeClient.setTimeOffset(3600); // set time offset to 1 hour (3600 seconds)
@@ -146,6 +158,7 @@ void setup() {
   ledcSetup(PWMChannel_main, PWMFreq, PWMResolution);
   ledcAttachPin(MainPin, PWMChannel_main);
   ledcWrite(PWMChannel_main, 0);
+  restart_flag = true;
 }
 
 
@@ -210,13 +223,15 @@ void loop()
       lcd.print(lcd_mode_text);
       temp_value = sliderValue;
       set_pumps_bool = true;
+
     }
     //ledcWrite(PWMChannel, sliderValue * 10.24);
     //WebSerial.println(sliderValue);
     // WebSerial.println(sliderValue * 10.24);
+    //WebSerial.println(sliderValue);
   }
 
-  if (set_pumps_bool == true || timeClient.getFormattedTime() == "12:46:00")
+  if (set_pumps_bool == true || timeClient.getFormattedTime() == "12:00:00")
   {
     set_pumps(pump_map, ledcWrite, PWMChannel_micro);
     currentMillisforpump = millis();
@@ -238,10 +253,17 @@ void loop()
     reset_pump = false;
     WebSerial.println("Turn off Pump");
   }
-  if (timeClient.getFormattedTime() == "00:00:00")
+  if (timeClient.getFormattedTime() == "20:04:30" || reset_msg_rec == true)
   {
-
+    eeprom_write_anything(0, sliderValue);
+    reset_msg_rec = false;
     ESP.restart();
+  }
+  if (restart_flag == true)
+  {
+     eeprom_read_anything(0, sliderValue);
+    WebSerial.println(sliderValue);
+    restart_flag = false;
   }
   main_server.handleClient();
   timeClient.update();
